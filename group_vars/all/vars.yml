@@ -1,0 +1,2 @@
+ssh_key_file : /home/user/.ssh/id_ed25519
+ansible_username: morlan

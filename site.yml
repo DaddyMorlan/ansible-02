@@ -3,8 +3,8 @@
   hosts: clickhouse
   become: true
   vars:
-    ansible_user: morlan
-    ansible_ssh_private_key_file : /home/user/.ssh/id_ed25519
+    ansible_user: "{{ ansible_username }}"
+    ansible_ssh_private_key_file : "{{ ssh_key_file }}"
   handlers:
     - name: Start clickhouse service
       become: true
@@ -53,8 +53,8 @@
   hosts: vector-01
   become: true
   vars:
-    ansible_user: morlan
-    ansible_ssh_private_key_file : /home/user/.ssh/id_ed25519
+    ansible_user: "{{ ansible_username }}"
+    ansible_ssh_private_key_file : "{{ ssh_key_file }}"
   handlers:
     - name: Start vector service
       become: true
