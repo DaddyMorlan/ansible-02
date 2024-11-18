@@ -1,0 +1,113 @@
+---
+- name: Install Clickhouse
+  hosts: clickhouse
+  become: true
+  vars:
+    ansible_user: morlan
+    ansible_ssh_private_key_file : /home/user/.ssh/id_ed25519
+  handlers:
+    - name: Start clickhouse service
+      become: true
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+
+
+  tasks:
+    - name: Get clickhouse distrib
+      block:
+        - name: Download clickhouse
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
+            dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+            mode: '0644'
+          loop: "{{ clickhouse_packages }}"
+          register: download_result
+          failed_when: download_result.status_code != 200 and download_result.status_code !=304
+      rescue:
+        - name: Get clickhouse static distrib
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
+            dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
+            mode: '0644'
+
+    - name: Install clickhouse packages
+      become: true
+      ansible.builtin.yum:
+        name:
+          - clickhouse-common-static-{{ clickhouse_version }}.rpm
+          - clickhouse-client-{{ clickhouse_version }}.rpm
+          - clickhouse-server-{{ clickhouse_version }}.rpm
+      notify: Start clickhouse service
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Create database
+      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      register: create_db
+      failed_when: create_db.rc != 0 and create_db.rc != 82
+      changed_when: create_db.rc == 0
+
+- name: Install vector
+  hosts: vector-01
+  become: true
+  vars:
+    ansible_user: morlan
+    ansible_ssh_private_key_file : /home/user/.ssh/id_ed25519
+  handlers:
+    - name: Start vector service
+      become: true
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        name: vector
+        state: reloaded
+  tasks:
+    - name: Make vector dir
+      ansible.builtin.file:
+        path: "{{ vector_install_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Download vector gz
+      ansible.builtin.get_url:
+        url: "https://api.github.com/repos/vectordotdev/vector/tarball/v{{ vector_version }}"
+        dest: "/tmp/vector-{{ vector_version }}.tar.gz"
+        mode: '0644'
+
+    - name: Extract vector
+      ansible.builtin.unarchive:
+        src: "/tmp/vector-{{ vector_version }}.tar.gz"
+        dest: "{{ vector_install_dir }}"
+        remote_src: true
+
+    - name: Create systemd service for Vector
+      copy:
+        dest: /etc/systemd/system/vector.service
+        content: |
+          [Unit]
+          Description=Vector Service
+          After=network.target
+
+          [Service]
+          ExecStart=/opt/vector/bin/vector --config /opt/vector/vector.toml
+          Restart=on-failure
+          User=root
+          Group=root
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Reload systemd
+
+    - name: Deploy vector config
+      ansible.builtin.template:
+        src: template/vector_template.toml.j2
+        dest: /opt/vector/vector.toml
+        mode: '0755'
+      notify: Start vector service
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
