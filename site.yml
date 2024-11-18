@@ -105,7 +105,7 @@
     - name: Deploy vector config
       ansible.builtin.template:
         src: "{{ vector_config_path }}"
-        dest: /opt/vector/vector.toml
+        dest: "{{ vector_config_file }}"
         mode: '0755'
       notify: Start vector service
 
